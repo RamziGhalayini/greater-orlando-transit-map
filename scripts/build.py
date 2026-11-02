@@ -94,6 +94,12 @@ def tidy_name(name):
     s = re.sub(r"\bLymmo\b", "LYMMO", s)
     s = re.sub(r"\bSunrail\b", "SunRail", s)
     s = re.sub(r"\bLynx\b", "LYNX", s)
+    s = re.sub(r"\bDeland\b", "DeLand", s)
+    s = re.sub(r"\bDebary\b", "DeBary", s)
+    s = re.sub(r"\bDeltona\b", "Deltona", s)
+    s = re.sub(r"\b(\d+)(St|Nd|Rd|Th)\b", lambda m: m.group(1) + m.group(2).lower(), s)  # 3Rd -> 3rd
+    # Drop trailing direction codes some agencies add (OB = outbound, NB = northbound...).
+    s = re.sub(r"[\s-]+\(?(Ob|Ib|Nb|Sb|Eb|Wb)\)?$", "", s, flags=re.I)
     s = re.sub(r"\s+", " ", s).strip()
     return s
 
@@ -205,8 +211,12 @@ def describe_hours(spans, starts):
         runs = "Weekdays only"
     elif not running:
         runs = "No trips scheduled in the next two weeks"
+    elif running == ["saturday"]:
+        runs = "Saturdays only"
+    elif running == ["sunday"]:
+        runs = "Sundays only"
     else:
-        runs = ", ".join(lbl for k, lbl in labels if k in spans)
+        runs = " and ".join({"weekday": "Weekdays", "saturday": "Saturday", "sunday": "Sunday"}[k] for k in running)
     for key, label in labels:
         if key in spans:
             a, b = spans[key]
@@ -236,12 +246,19 @@ def build_gtfs(feed, data, region_bbox):
         if t.get("shape_id"):
             route_shapes[t["route_id"]].add(t["shape_id"])
 
+    # Shapes.
+    shape_pts = defaultdict(list)
+    for p in iter_table(zf, "shapes.txt"):
+        shape_pts[p["shape_id"]].append((int(p["shape_pt_sequence"]), float(p["shape_pt_lon"]), float(p["shape_pt_lat"])))
+    # Routes with no usable shape get drawn stop-to-stop instead.
+    shapeless = {t["route_id"] for t in trips.values()} - {
+        rid for rid, sids in route_shapes.items() if any(len(shape_pts.get(x, [])) >= 2 for x in sids)}
+
     # One pass over stop_times: first/last time per trip, stop -> routes.
     first = {}
     last = {}
     stop_routes = defaultdict(set)
     trip_stops = defaultdict(list)
-    need_stop_seq = not route_shapes
     for st in iter_table(zf, "stop_times.txt"):
         tid = st["trip_id"]
         t = trips.get(tid)
@@ -255,7 +272,7 @@ def build_gtfs(feed, data, region_bbox):
         if arr is not None and (tid not in last or seq > last[tid][0]):
             last[tid] = (seq, arr)
         stop_routes[st["stop_id"]].add(t["route_id"])
-        if need_stop_seq:
+        if t["route_id"] in shapeless:
             trip_stops[tid].append((seq, st["stop_id"]))
 
     # Hours per route.
@@ -277,15 +294,13 @@ def build_gtfs(feed, data, region_bbox):
     # Stops.
     stops = {s["stop_id"]: s for s in read_table(zf, "stops.txt")}
 
-    # Shapes.
-    shape_pts = defaultdict(list)
-    for p in iter_table(zf, "shapes.txt"):
-        shape_pts[p["shape_id"]].append((int(p["shape_pt_sequence"]), float(p["shape_pt_lon"]), float(p["shape_pt_lat"])))
-
     def route_label(r):
         short = (r.get("route_short_name") or "").strip()
         long_ = tidy_name((r.get("route_long_name") or "").strip())
         if short and long_:
+            long_ = re.sub(r"^" + re.escape(short) + r"\b[\s:-]*", "", long_, flags=re.I).strip() or long_
+            if long_.lower() == short.lower():
+                return short, short
             return short, f"{short}: {long_}"
         return short or long_, short or long_
 
@@ -309,7 +324,7 @@ def build_gtfs(feed, data, region_bbox):
             pts = simplify(pts, 0.00008)
             if len(pts) >= 2:
                 lines.append([[rnd(x), rnd(y)] for x, y in pts])
-        if not lines and need_stop_seq:
+        if not lines and rid in shapeless:
             best = max((tid for tid, t in trips.items() if t["route_id"] == rid), key=lambda tid: len(trip_stops.get(tid, [])), default=None)
             if best:
                 pts = []
