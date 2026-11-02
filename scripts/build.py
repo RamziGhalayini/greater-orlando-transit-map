@@ -57,7 +57,7 @@ ABBREV = {
     "n": "North", "s": "South", "e": "East", "w": "West",
     "ne": "Northeast", "nw": "Northwest", "se": "Southeast", "sw": "Southwest",
     "hosp": "Hospital", "apts": "Apartments", "apt": "Apartment", "mkt": "Market",
-    "sta": "Station", "stn": "Station", "@": "&",
+    "sta": "Station", "stn": "Station", "hts": "Heights", "mt": "Mount", "ft": "Fort", "@": "&",
 }
 
 
