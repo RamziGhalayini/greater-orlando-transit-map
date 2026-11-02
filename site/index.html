@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Greater Orlando Transit Map</title>
+  <meta name="description" content="Free, open-source map of buses, trains and on-call rides in Orange, Seminole, Osceola, Volusia, Lake and Polk counties.">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>Getting Around Greater Orlando</h1>
+    <p>Buses, trains and on-call rides in Orange, Seminole, Osceola, Volusia, Lake and Polk counties.</p>
+    <button id="toggle-panel" aria-expanded="true" aria-controls="panel">Hide the list</button>
+  </header>
+  <main>
+    <aside id="panel" aria-label="What to show on the map">
+      <h2>Show on the map</h2>
+      <div id="layers"></div>
+      <p class="hint" id="stop-hint">Zoom in close to see bus stops.</p>
+      <button id="locate" class="big">Show where I am</button>
+      <details>
+        <summary>About this map</summary>
+        <p>A free, community-made map. It is not run by any transit agency. Times and fares can change, so check with the agency before you travel.</p>
+        <p>Hours on each line are the first bus out and the last bus in, not the time a bus reaches your stop.</p>
+        <p id="updated"></p>
+        <p><a href="https://github.com/RamziGhalayini/greater-orlando-transit-map" id="repo-link">Data and code are open source.</a></p>
+      </details>
+    </aside>
+    <div id="map" role="region" aria-label="Map"></div>
+  </main>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
