@@ -9,7 +9,7 @@ def make(path, kind="bus"):
     files = {
         "agency.txt": "agency_id,agency_name,agency_url,agency_timezone\nA,Test,https://example.com,America/New_York\n",
         "routes.txt": "route_id,agency_id,route_short_name,route_long_name,route_type,route_color\n"
-                      "R8,A,8,W OAK RIDGE RD/INTL DR,3,0B5CAD\nR60,A,60,LYMMO ORANGE LINE,3,F57C00\n",
+                      "R8,A,8,W OAK RIDGE RD/INTL DR,3,0B5CAD\nR60,A,60,LYMMO ORANGE LINE,3,F57C00\nR99,A,99,99 NO SHAPE ROUTE,3,\n",
         "calendar.txt": "service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date\n"
                         f"WK,1,1,1,1,1,0,0,{start},{end}\nSA,0,0,0,0,0,1,0,{start},{end}\n",
         "stops.txt": "stop_id,stop_name,stop_lat,stop_lon\n"
@@ -38,6 +38,13 @@ def make(path, kind="bus"):
         trips.append(f"R60,WK,{tid},0,SH60")
         st.append(f"{tid},{t//60:02d}:{t%60:02d}:00,{t//60:02d}:{t%60:02d}:00,S1,1")
         st.append(f"{tid},{t//60:02d}:{t%60+0:02d}:00,{t//60:02d}:{t%60:02d}:00,S2,2")
+    for k in range(6):
+        t = 7*60 + 30*k
+        tid = f"T99_{k}"
+        trips.append(f"R99,SA,{tid},0,")
+        for j, sid in enumerate(("S1", "S3", "S4"), 1):
+            m = t + 10*j
+            st.append(f"{tid},{m//60:02d}:{m%60:02d}:00,{m//60:02d}:{m%60:02d}:00,{sid},{j}")
     files["trips.txt"] = "\n".join(trips) + "\n"
     files["stop_times.txt"] = "\n".join(st) + "\n"
     files["feed_info.txt"] = f"feed_publisher_name,feed_publisher_url,feed_lang,feed_end_date\nTest,https://example.com,en,{end}\n"
