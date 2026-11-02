@@ -1,0 +1,145 @@
+{
+ "region": {
+  "name": "Greater Orlando",
+  "counties": [
+   "Orange",
+   "Seminole",
+   "Osceola",
+   "Volusia",
+   "Lake",
+   "Polk"
+  ],
+  "bbox": [
+   -82.35,
+   27.6,
+   -80.75,
+   29.45
+  ],
+  "center": [
+   28.54,
+   -81.38
+  ],
+  "zoom": 10
+ },
+ "feeds": [
+  {
+   "id": "lynx",
+   "name": "LYNX buses",
+   "area": "Orange, Osceola and Seminole counties",
+   "mode": "bus",
+   "url": "http://gtfsrt.golynx.com/gtfsrt/google_transit.zip",
+   "color": "#c2185b",
+   "website": "https://www.golynx.com",
+   "phone": "407-841-5969",
+   "groups": [
+    {
+     "id": "lymmo",
+     "name": "LYMMO (free downtown Orlando buses)",
+     "match": "LYMMO|^6[0-2]$"
+    }
+   ]
+  },
+  {
+   "id": "sunrail",
+   "name": "SunRail train",
+   "area": "DeLand to Poinciana",
+   "mode": "train",
+   "url": "https://corporate.sunrail.com/gtfs/google_transit.zip",
+   "color": "#0064b4",
+   "website": "https://sunrail.com"
+  },
+  {
+   "id": "brightline",
+   "name": "Brightline train",
+   "area": "Orlando airport station (trains to South Florida)",
+   "mode": "train",
+   "url": "http://feed.gobrightline.com/bl_gtfs.zip",
+   "color": "#d4a700",
+   "website": "https://www.gobrightline.com",
+   "clip_to_region": true
+  },
+  {
+   "id": "votran",
+   "name": "Votran buses",
+   "area": "Volusia County: Daytona Beach area, DeLand, Deltona, Orange City and DeBary",
+   "mode": "bus",
+   "url": "http://realtimevotran.availtec.com/InfoPoint/GTFS-Zip.ashx",
+   "color": "#00838f",
+   "website": "https://www.votran.org",
+   "phone": "386-761-7700"
+  },
+  {
+   "id": "citrus",
+   "name": "Citrus Connection buses",
+   "area": "Polk County",
+   "mode": "bus",
+   "url": "https://passio3.com/citrusconn/passioTransit/gtfs/google_transit.zip",
+   "color": "#ef6c00",
+   "website": "https://ridecitrus.com"
+  },
+  {
+   "id": "lakexpress",
+   "name": "LakeXpress buses",
+   "area": "Lake County",
+   "mode": "bus",
+   "url": "https://www.ridelakexpress.com/gtfs/gtfs.zip",
+   "color": "#2e7d32",
+   "website": "https://www.ridelakexpress.com"
+  },
+  {
+   "id": "iride",
+   "name": "I-RIDE Trolley",
+   "area": "International Drive",
+   "mode": "bus",
+   "url": "https://buswhere.com/iridetrolley/gtfs/schedule",
+   "color": "#6a1b9a",
+   "website": "https://iridetrolley.com"
+  }
+ ],
+ "zones": [
+  {
+   "id": "scout",
+   "name": "Scout on-call rides (Seminole County)",
+   "url": "https://utility.arcgis.com/usrsvcs/servers/269e3784f248463a96135809b5962ea8/rest/services/Scout_Service_Zones/MapServer/60/query?where=1%3D1&outFields=ScoutServiceZoneName&outSR=4326&maxAllowableOffset=0.0002&f=geojson",
+   "name_field": "ScoutServiceZoneName",
+   "name_prefix": "Scout ",
+   "color": "#2e7d32",
+   "description": [
+    "Scout: Seminole County's on-call ride service.",
+    "Book with the Ride Freebee app, or call (407) 665-7433 (665-RIDE).",
+    "Fare: $4 for a ride inside one zone, more if you cross into other zones ($7, $10 or $14).",
+    "Rides to or from your nearest SunRail station cost $1 at most.",
+    "Some riders get discounts. Ask when you book."
+   ],
+   "source": "Seminole County GIS, Scout Service Zones; fares from scoutseminolefl.com/fares"
+  },
+  {
+   "id": "neighborlink",
+   "name": "LYNX NeighborLink on-call zones",
+   "url": "https://services2.arcgis.com/rp0R3ANPwsAdELpS/arcgis/rest/services/NeighborLink/FeatureServer/0/query?where=1%3D1&outFields=NAME,Number_&outSR=4326&maxAllowableOffset=0.0002&f=geojson",
+   "name_field": "NAME",
+   "color": "#c2185b",
+   "description": [
+    "LYNX NeighborLink: a small LYNX bus you call for rides in this shaded area.",
+    "To book a ride, call 407-244-0808 or use the Rides On Demand app.",
+    "Call for hours and fares."
+   ],
+   "source": "LYNX GIS, NeighborLink layer; booking line from the LYNX System Map (April 2026)"
+  }
+ ],
+ "manual": [
+  {
+   "id": "scout-hubs",
+   "name": "Scout hubs and charging spots",
+   "file": "manual/scout-hubs.geojson",
+   "color": "#2e7d32"
+  },
+  {
+   "id": "robotaxi",
+   "name": "Robotaxi areas (approximate)",
+   "file": "manual/robotaxi-areas.geojson",
+   "color": "#455a64",
+   "todo": "Trace Waymo and Tesla Robotaxi outlines from their published maps. Label every shape as approximate."
+  }
+ ]
+}
