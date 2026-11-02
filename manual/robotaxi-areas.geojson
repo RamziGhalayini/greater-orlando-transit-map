@@ -1,0 +1,5 @@
+{
+  "type": "FeatureCollection",
+  "note": "Waymo and Tesla do not publish service areas as map data. Shapes here are traced by hand from their published maps and must be labeled approximate.",
+  "features": []
+}

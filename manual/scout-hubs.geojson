@@ -1,0 +1,30 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "layer": "scout-hubs",
+        "name": "Scout hub: Seminole State College",
+        "lines": [
+          "Main Scout stop at Seminole State College (Sanford/Lake Mary campus, 100 Weldon Blvd).",
+          "Scout vans charge in this parking lot."
+        ],
+        "source": "Local knowledge (map maintainer). Pin is on the campus, not the exact lot."
+      },
+      "geometry": { "type": "Point", "coordinates": [-81.30557, 28.7455] }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "layer": "scout-hubs",
+        "name": "Scout charging: Target, Lake Mary Blvd",
+        "lines": [
+          "Scout vans charge in this Target parking lot (4155 W Lake Mary Blvd, Lake Mary)."
+        ],
+        "source": "Local knowledge (map maintainer)."
+      },
+      "geometry": { "type": "Point", "coordinates": [-81.34856, 28.75413] }
+    }
+  ]
+}
