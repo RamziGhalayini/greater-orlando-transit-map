@@ -18,6 +18,7 @@ import csv
 import io
 import json
 import math
+import os
 import re
 import statistics
 import sys
@@ -26,6 +27,9 @@ import zipfile
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import snap  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "site" / "data"
@@ -233,7 +237,7 @@ def describe_hours(spans, starts):
     return runs, parts, freq
 
 
-def build_gtfs(feed, data, region_bbox):
+def build_gtfs(feed, data, region_bbox, snapper=None):
     zf = zipfile.ZipFile(io.BytesIO(data))
     today = datetime.now(timezone(timedelta(hours=-5))).date()
     svc = active_services(zf, today)
@@ -241,10 +245,13 @@ def build_gtfs(feed, data, region_bbox):
     routes = {r["route_id"]: r for r in read_table(zf, "routes.txt")}
     trips = {}
     route_shapes = defaultdict(set)
+    shape_trip = {}  # one example trip per shape, to find its stops
     for t in iter_table(zf, "trips.txt"):
         trips[t["trip_id"]] = t
         if t.get("shape_id"):
             route_shapes[t["route_id"]].add(t["shape_id"])
+            shape_trip.setdefault(t["shape_id"], t["trip_id"])
+    example_trips = set(shape_trip.values())
 
     # Shapes.
     shape_pts = defaultdict(list)
@@ -272,7 +279,7 @@ def build_gtfs(feed, data, region_bbox):
         if arr is not None and (tid not in last or seq > last[tid][0]):
             last[tid] = (seq, arr)
         stop_routes[st["stop_id"]].add(t["route_id"])
-        if t["route_id"] in shapeless:
+        if t["route_id"] in shapeless or tid in example_trips:
             trip_stops[tid].append((seq, st["stop_id"]))
 
     # Hours per route.
@@ -321,7 +328,17 @@ def build_gtfs(feed, data, region_bbox):
             pts = [(lon, lat) for _, lon, lat in sorted(shape_pts.get(sid, []))]
             if clip:
                 pts = [p for p in pts if in_bbox(p[0], p[1], region_bbox)]
-            pts = simplify(pts, 0.00008)
+            raw = [[rnd(x), rnd(y)] for x, y in pts]
+            if snapper and len(raw) >= 2:
+                guide = []
+                for _, stop_id in sorted(trip_stops.get(shape_trip.get(sid), [])):
+                    s_ = stops.get(stop_id)
+                    if s_:
+                        guide.append([rnd(s_["stop_lon"]), rnd(s_["stop_lat"])])
+                raw, ok = snapper(raw, guide)
+                pts = simplify(raw, 0.00003) if ok else simplify(raw, 0.00008)
+            else:
+                pts = simplify(raw, 0.00008)
             if len(pts) >= 2:
                 lines.append([[rnd(x), rnd(y)] for x, y in pts])
         if not lines and rid in shapeless:
@@ -332,6 +349,9 @@ def build_gtfs(feed, data, region_bbox):
                     s = stops.get(sid)
                     if s:
                         pts.append([rnd(s["stop_lon"]), rnd(s["stop_lat"])])
+                if snapper and len(pts) >= 2:
+                    snapped, ok = snapper(pts)
+                    pts = [[rnd(x), rnd(y)] for x, y in simplify(snapped, 0.00003)] if ok else pts
                 if len(pts) >= 2:
                     lines.append(pts)
         # Drop duplicate shapes.
@@ -404,6 +424,47 @@ def build_zone(zone):
     return feats
 
 
+# ---------------------------------------------------------------- street snapping
+
+def make_snapper(feed):
+    """Return (snapper, stats, cache) for bus feeds, or (None, None, None).
+
+    Lines are matched to streets with the OSRM server in $OSRM_URL. Matches are
+    cached in cache/snap/<feed>.json, so builds without OSRM still use them."""
+    if feed.get("mode") != "bus" or feed.get("snap") is False:
+        return None, None, None
+    osrm = os.environ.get("OSRM_URL")
+    cache = snap.SnapCache(ROOT / "cache" / "snap" / f"{feed['id']}.json")
+    stats = {"lines": 0, "on_streets": 0, "kept_agency_line": 0, "shortcuts_fixed": 0, "not_checked": 0}
+    notes = []
+
+    def snapper(line, guide=None):
+        stats["lines"] += 1
+        key = [line, guide or []]
+        hit = cache.get(key)
+        if hit is None and osrm:
+            try:
+                snapped, info = snap.snap_line(osrm, line, guide)
+            except Exception as e:  # network or OSRM error: keep the agency line
+                snapped, info = None, f"OSRM error: {e}"
+            hit = {"line": snapped, "fixed": info if snapped else 0, "note": "" if snapped else str(info)}
+            cache.put(key, hit)
+        if hit is None:
+            stats["not_checked"] += 1
+            return line, False
+        if hit["line"]:
+            stats["on_streets"] += 1
+            stats["shortcuts_fixed"] += hit["fixed"]
+            return hit["line"], True
+        stats["kept_agency_line"] += 1
+        if hit.get("note") and len(notes) < 5:
+            notes.append(hit["note"])
+        return line, False
+
+    stats["notes"] = notes
+    return snapper, stats, cache
+
+
 # ---------------------------------------------------------------- main
 
 def main():
@@ -428,13 +489,19 @@ def main():
             continue
         try:
             data = Path(src).read_bytes() if feed["id"] in local else fetch(src)
-            routes, stops, valid = build_gtfs(feed, data, bbox)
+            snapper, snap_stats, cache = make_snapper(feed)
+            routes, stops, valid = build_gtfs(feed, data, bbox, snapper)
+            if cache:
+                cache.save()
             if not routes:
                 raise RuntimeError("feed had no routes with shapes or stops")
             write_json(OUT / f"{feed['id']}-routes.geojson", {"type": "FeatureCollection", "features": routes})
             write_json(OUT / f"{feed['id']}-stops.geojson", {"type": "FeatureCollection", "features": stops})
             manifest["layers"][feed["id"]] = {"kind": "gtfs", "routes": len(routes), "stops": len(stops),
                                               "updated": stamp, "schedule_valid_until": valid}
+            if snap_stats:
+                manifest["layers"][feed["id"]]["street_snapping"] = snap_stats
+                print(f"  street snapping: {snap_stats}")
             print(f"+ {feed['id']}: {len(routes)} routes, {len(stops)} stops")
         except Exception as e:  # keep the previous files
             problems.append(f"{feed['id']}: {e}")
