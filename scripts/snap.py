@@ -11,12 +11,13 @@ match never makes the map worse than the agency's own data.
 Results are cached by line, so the slow matching only runs when an agency
 changes a route.
 """
+import bisect
 import hashlib
 import json
 import math
 import urllib.request
 
-SNAP_VERSION = 2       # bump to redo every cached match after changing this file
+SNAP_VERSION = 3       # bump to redo every cached match after changing this file
 RADIUS_M = 25          # how far a shape point may be from the street centreline
 CHUNK = 400            # points per OSRM request
 MAX_POINT_DEV_M = 45   # an original point further than this from the match = bad match
@@ -136,25 +137,50 @@ def snap_line(osrm_url, line, stops=None):
     if len(snapped) < 2:
         return None, "empty match"
     snapped = [[round(x, 6), round(y, 6)] for x, y in snapped]
+    return splice(line, snapped)
+
+
+def _point_at(line, cum, pos):
+    i = min(max(bisect.bisect_right(cum, pos) - 1, 0), len(line) - 2)
+    seg = cum[i + 1] - cum[i]
+    t = 0.0 if seg == 0 else min(1.0, max(0.0, (pos - cum[i]) / seg))
+    a, b = line[i], line[i + 1]
+    return [round(a[0] + (b[0] - a[0]) * t, 6), round(a[1] + (b[1] - a[1]) * t, 6)], i
+
+
+def splice(line, snapped):
+    """Build the final line piece by piece. Each stretch between two agency points
+    uses the street path when the match clearly follows it, and keeps the agency's
+    straight piece when it doesn't (for example inside a bus terminal). So one bad
+    spot no longer throws away the fixes on the rest of the route.
+
+    Returns (new_line, shortcuts_fixed) or (None, reason) if almost nothing matched."""
+    cum = [0.0]
+    for a, b in zip(snapped, snapped[1:]):
+        cum.append(cum[-1] + _m(a, b))
     pos = positions_along(line, snapped)
-    worst = max(d for d, _ in pos)
-    # Length of agency line lying away from the match. Short pieces are normal
-    # (bus terminals, turnarounds); long ones mean the match went elsewhere.
-    stray_m = sum(_m(a, b) for (a, b), (da, _), (db, _) in zip(zip(line, line[1:]), pos, pos[1:])
-                  if da > MAX_POINT_DEV_M and db > MAX_POINT_DEV_M)
-    if worst > 150 or stray_m > max(300, 0.05 * length(line)):
-        return None, f"match strays {round(worst)} m from the agency line ({round(stray_m)} m of it)"
-    ratio = length(snapped) / max(length(line), 1)
-    if ratio > MAX_LENGTH_RATIO:
-        return None, f"match is {ratio:.2f}x longer than the agency line"
-    # Count straight jumps in the agency line that the street path had to go around.
-    fixed = 0
-    for (a, b), (_, pa), (_, pb) in zip(zip(line, line[1:]), pos, pos[1:]):
+    out, fixed, on_m, total_m = [], 0, 0.0, 0.0
+    for (a, b), (da, pa), (db, pb) in zip(zip(line, line[1:]), pos, pos[1:]):
         straight = _m(a, b)
+        total_m += straight
         along = pb - pa
-        if straight > 40 and along > straight * 1.12 + 15:
-            fixed += 1
-    return snapped, fixed
+        good = (da <= MAX_POINT_DEV_M and db <= MAX_POINT_DEV_M and along >= 0
+                and along <= straight * MAX_LENGTH_RATIO + 150)
+        if good:
+            pa_pt, ia = _point_at(snapped, cum, pa)
+            pb_pt, ib = _point_at(snapped, cum, pb)
+            piece = [pa_pt] + snapped[ia + 1:ib + 1] + [pb_pt]
+            on_m += straight
+            if straight > 40 and along > straight * 1.12 + 15:
+                fixed += 1
+        else:
+            piece = [a, b]
+        for p in piece:
+            if not out or _m(out[-1], p) > 0.5:
+                out.append(p)
+    if total_m == 0 or on_m / total_m < 0.3 or len(out) < 2:
+        return None, f"street match covered only {round(100 * on_m / max(total_m, 1))}% of the line"
+    return out, fixed
 
 
 class SnapCache:
