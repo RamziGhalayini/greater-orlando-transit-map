@@ -130,13 +130,26 @@
     const gj = built[m.id] ? await getJSON(`data/${m.id}.geojson`) : null;
     const title = m.id === 'robotaxi' ? 'Robotaxis' : 'On-call rides';
     if (!gj || !gj.features || !gj.features.length) { addSoon(title, m.name); continue; }
+    if (m.id === 'robotaxi') {
+      // One checkbox per company, drawn bold so it stands out over bus lines.
+      for (const f of gj.features) {
+        const c = f.properties.color || m.color;
+        const layer = L.geoJSON(f, {
+          renderer,
+          style: () => ({ color: c, weight: 4, fillColor: c, fillOpacity: 0.22 }),
+          onEachFeature: (ft, l) => l.bindPopup(infoPopup(ft.properties)),
+        });
+        addToggle(title, f.properties.name, 'Check the app before you go.', c, layer, true, true);
+      }
+      continue;
+    }
     const layer = L.geoJSON(gj, {
       renderer,
       style: (f) => (f.geometry.type === 'Point' ? {} : { color: f.properties.color || m.color, weight: 2, dashArray: '6 6', fillColor: f.properties.color || m.color, fillOpacity: 0.12 }),
       pointToLayer: (f, ll) => L.circleMarker(ll, { renderer, radius: 9, color: '#fff', weight: 3, fillColor: m.color, fillOpacity: 1 }),
       onEachFeature: (f, l) => l.bindPopup(infoPopup(f.properties)),
     });
-    addToggle(title, m.name, '', m.color, layer, true, m.id === 'robotaxi');
+    addToggle(title, m.name, '', m.color, layer, true, false);
   }
 
   syncStops();
