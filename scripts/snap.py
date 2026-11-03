@@ -16,6 +16,7 @@ import json
 import math
 import urllib.request
 
+SNAP_VERSION = 2       # bump to redo every cached match after changing this file
 RADIUS_M = 25          # how far a shape point may be from the street centreline
 CHUNK = 400            # points per OSRM request
 MAX_POINT_DEV_M = 45   # an original point further than this from the match = bad match
@@ -43,27 +44,39 @@ def _project(p, a, b):
     return math.hypot(ax + t * dx, ay + t * dy), t
 
 
-def positions_along(points, line):
+def positions_along(points, line, back_m=150.0, ahead_m=1500.0):
     """For each point, its distance from `line`, and its position (metres from the
-    start) along `line`. Searches forward so loops and out-and-back routes work."""
+    start) along `line`. Points are taken in order: each one is looked for a short
+    way ahead of the previous one, so out-and-back routes on the same street and
+    loops don't jump to the wrong pass."""
     cum = [0.0]
     for a, b in zip(line, line[1:]):
         cum.append(cum[-1] + _m(a, b))
     out = []
     start = 0
+    prev = None
+    nseg = len(line) - 1
     for p in points:
+        gap = _m(prev, p) if prev is not None else 0.0
+        lo = start
+        while lo > 0 and cum[start] - cum[lo] < back_m:
+            lo -= 1
+        limit = cum[start] + max(ahead_m, 3 * gap)
         best = (float("inf"), start, 0.0)
-        # look ahead a limited window first, then the whole rest of the line
-        for lo, hi in ((start, min(len(line) - 1, start + 400)), (start, len(line) - 1)):
-            for i in range(lo, hi):
-                d, t = _project(p, line[i], line[i + 1])
-                if d < best[0]:
-                    best = (d, i, t)
-            if best[0] <= RADIUS_M * 2:
-                break
+        i = lo
+        while i < nseg and (cum[i] <= limit or i == lo):
+            d, t = _project(p, line[i], line[i + 1])
+            if d < best[0]:
+                best = (d, i, t)
+            i += 1
         d, i, t = best
+        if d == float("inf"):  # line has a single point
+            out.append((_m(p, line[0]), 0.0))
+            prev = p
+            continue
         start = i
-        out.append((d, cum[i] + t * (cum[i + 1] - cum[i]) if i + 1 < len(cum) else cum[i]))
+        prev = p
+        out.append((d, cum[i] + t * (cum[i + 1] - cum[i])))
     return out
 
 
@@ -125,10 +138,12 @@ def snap_line(osrm_url, line, stops=None):
     snapped = [[round(x, 6), round(y, 6)] for x, y in snapped]
     pos = positions_along(line, snapped)
     worst = max(d for d, _ in pos)
-    strays = sum(1 for d, _ in pos if d > MAX_POINT_DEV_M)
-    # A few points inside bus terminals sit off the street grid; allow those.
-    if worst > 120 or strays > max(2, 0.05 * len(pos)):
-        return None, f"match strays {round(worst)} m from the agency line ({strays} points)"
+    # Length of agency line lying away from the match. Short pieces are normal
+    # (bus terminals, turnarounds); long ones mean the match went elsewhere.
+    stray_m = sum(_m(a, b) for (a, b), (da, _), (db, _) in zip(zip(line, line[1:]), pos, pos[1:])
+                  if da > MAX_POINT_DEV_M and db > MAX_POINT_DEV_M)
+    if worst > 150 or stray_m > max(300, 0.05 * length(line)):
+        return None, f"match strays {round(worst)} m from the agency line ({round(stray_m)} m of it)"
     ratio = length(snapped) / max(length(line), 1)
     if ratio > MAX_LENGTH_RATIO:
         return None, f"match is {ratio:.2f}x longer than the agency line"
@@ -159,14 +174,15 @@ class SnapCache:
 
     def get(self, line):
         k = self.key(line)
-        if k in self.data:
+        hit = self.data.get(k)
+        if hit is not None and hit.get("v") == SNAP_VERSION:
             self.used.add(k)
-            return self.data[k]
+            return hit
         return None
 
     def put(self, line, value):
         k = self.key(line)
-        self.data[k] = value
+        self.data[k] = dict(value, v=SNAP_VERSION)
         self.used.add(k)
 
     def save(self):
