@@ -123,8 +123,18 @@ def clock(s):
     return f"{h12}:{m:02d} {ampm}"
 
 
+def _seg_dist(p, a, b):
+    """Distance from p to the segment ab (in degrees). Works when a == b."""
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    seg2 = dx * dx + dy * dy
+    t = 0.0 if seg2 == 0 else max(0.0, min(1.0, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / seg2))
+    return math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy)
+
+
 def simplify(points, tol):
-    """Douglas-Peucker on [lon, lat] points."""
+    """Douglas-Peucker on [lon, lat] points. Measures distance to the segment, not
+    the endless line through it, so loop routes (which end where they start) and
+    out-and-back stretches are kept instead of collapsing."""
     if len(points) < 3:
         return points
     keep = [False] * len(points)
@@ -132,14 +142,9 @@ def simplify(points, tol):
     stack = [(0, len(points) - 1)]
     while stack:
         a, b = stack.pop()
-        ax, ay = points[a]
-        bx, by = points[b]
-        dx, dy = bx - ax, by - ay
-        norm = math.hypot(dx, dy) or 1e-12
         best, idx = 0.0, None
         for i in range(a + 1, b):
-            px, py = points[i]
-            d = abs(dy * px - dx * py + bx * ay - by * ax) / norm
+            d = _seg_dist(points[i], points[a], points[b])
             if d > best:
                 best, idx = d, i
         if idx is not None and best > tol:
@@ -335,7 +340,7 @@ def build_gtfs(feed, data, region_bbox, snapper=None):
                     s_ = stops.get(stop_id)
                     if s_:
                         guide.append([rnd(s_["stop_lon"]), rnd(s_["stop_lat"])])
-                raw, ok = snapper(raw, guide)
+                raw, ok = snapper(raw, guide, route_label(r)[0])
                 pts = simplify(raw, 0.00003) if ok else simplify(raw, 0.00008)
             else:
                 pts = simplify(raw, 0.00008)
@@ -350,7 +355,7 @@ def build_gtfs(feed, data, region_bbox, snapper=None):
                     if s:
                         pts.append([rnd(s["stop_lon"]), rnd(s["stop_lat"])])
                 if snapper and len(pts) >= 2:
-                    snapped, ok = snapper(pts)
+                    snapped, ok = snapper(pts, None, route_label(r)[0])
                     pts = [[rnd(x), rnd(y)] for x, y in simplify(snapped, 0.00003)] if ok else pts
                 if len(pts) >= 2:
                     lines.append(pts)
@@ -435,33 +440,41 @@ def make_snapper(feed):
         return None, None, None
     osrm = os.environ.get("OSRM_URL")
     cache = snap.SnapCache(ROOT / "cache" / "snap" / f"{feed['id']}.json")
-    stats = {"lines": 0, "on_streets": 0, "kept_agency_line": 0, "shortcuts_fixed": 0, "not_checked": 0}
+    stats = {"lines": 0, "on_streets": 0, "with_spots_off_street": 0, "kept_agency_line": 0,
+             "not_checked": 0, "shortcuts_fixed": 0}
     notes = []
+    spots = []  # straight pieces the street check could not fix, for a look by hand
 
-    def snapper(line, guide=None):
+    def snapper(line, guide=None, label=""):
         stats["lines"] += 1
         key = [line, guide or []]
         hit = cache.get(key)
         if hit is None and osrm:
             try:
-                snapped, info = snap.snap_line(osrm, line, guide)
+                hit = snap.snap_line(osrm, line, guide)
             except Exception as e:  # network or OSRM error: keep the agency line
-                snapped, info = None, f"OSRM error: {e}"
-            hit = {"line": snapped, "fixed": info if snapped else 0, "note": "" if snapped else str(info)}
+                hit = {"line": None, "fixed": 0, "still": [], "note": f"OSRM error: {e}"}
             cache.put(key, hit)
         if hit is None:
             stats["not_checked"] += 1
             return line, False
-        if hit["line"]:
+        if hit.get("note") and len(notes) < 10:
+            notes.append(f"{label}: {hit['note']}")
+        if not hit["line"]:
+            stats["kept_agency_line"] += 1
+            return line, False
+        stats["shortcuts_fixed"] += hit["fixed"]
+        if hit.get("still"):
+            stats["with_spots_off_street"] += 1
+            for p in hit["still"]:
+                if len(spots) < 100:
+                    spots.append({"route": label, "at": p})
+        else:
             stats["on_streets"] += 1
-            stats["shortcuts_fixed"] += hit["fixed"]
-            return hit["line"], True
-        stats["kept_agency_line"] += 1
-        if hit.get("note") and len(notes) < 5:
-            notes.append(hit["note"])
-        return line, False
+        return hit["line"], True
 
     stats["notes"] = notes
+    stats["spots_off_street"] = spots
     return snapper, stats, cache
 
 
