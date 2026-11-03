@@ -467,7 +467,7 @@ def make_snapper(feed):
         if hit.get("still"):
             stats["with_spots_off_street"] += 1
             for p in hit["still"]:
-                if len(spots) < 100:
+                if len(spots) < 500:
                     spots.append({"route": label, "at": p})
         else:
             stats["on_streets"] += 1
@@ -476,6 +476,37 @@ def make_snapper(feed):
     stats["notes"] = notes
     stats["spots_off_street"] = spots
     return snapper, stats, cache
+
+
+def build_flags(cfg, manifest):
+    """One warning point for each spot where a line still cuts off the street
+    (the street check couldn't find the path the bus takes). Spots within 300 m
+    of each other are merged into one, listing every route that passes there."""
+    merged = []
+    for feed in cfg["feeds"]:
+        snapping = manifest["layers"].get(feed["id"], {}).get("street_snapping") or {}
+        for s in snapping.get("spots_off_street", []):
+            at = [rnd(s["at"][0]), rnd(s["at"][1])]
+            spot = next((x for x in merged if x["feed"] is feed and snap._m(x["at"], at) < 300), None)
+            if spot is None:
+                spot = {"feed": feed, "at": at, "routes": []}
+                merged.append(spot)
+            if s["route"] and s["route"] not in spot["routes"]:
+                spot["routes"].append(s["route"])
+    feats = []
+    for spot in merged:
+        routes = ", ".join(spot["routes"])
+        which = f"{spot['feed']['name']}, route {routes}" if len(spot["routes"]) == 1 else \
+            f"{spot['feed']['name']}, routes {routes}" if routes else spot["feed"]["name"]
+        feats.append({"type": "Feature", "geometry": {"type": "Point", "coordinates": spot["at"]},
+                      "properties": {"layer": "flags", "feed": spot["feed"]["id"], "routes": spot["routes"],
+                                     "name": "This line may be wrong here",
+                                     "lines": [which + ".",
+                                               "The agency's map data is rough at this spot, and the map could not "
+                                               "find the street the bus uses, so the line may cut across buildings.",
+                                               "Check the agency's own map before you go."],
+                                     "source": "Automatic street check of this map"}})
+    return feats
 
 
 # ---------------------------------------------------------------- main
@@ -538,6 +569,11 @@ def main():
             gj = json.loads(p.read_text())
             write_json(OUT / f"{m['id']}.geojson", gj)
             manifest["layers"][m["id"]] = {"kind": "manual", "features": len(gj.get("features", [])), "updated": stamp}
+
+    flags = build_flags(cfg, manifest)
+    write_json(OUT / "flags.geojson", {"type": "FeatureCollection", "features": flags})
+    manifest["layers"]["flags"] = {"kind": "flags", "features": len(flags), "updated": stamp}
+    print(f"+ flags: {len(flags)} spots where a line may not follow the street")
 
     manifest["built"] = stamp
     manifest["problems"] = problems

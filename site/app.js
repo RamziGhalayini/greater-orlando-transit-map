@@ -37,7 +37,7 @@
   // ---------- layer list UI
   const box = document.getElementById('layers');
   const sections = {};
-  for (const title of ['Buses and trolleys', 'Trains', 'On-call rides', 'Robotaxis']) {
+  for (const title of ['Buses and trolleys', 'Trains', 'On-call rides', 'Robotaxis', 'Map accuracy']) {
     const wrap = document.createElement('div');
     wrap.hidden = true;
     wrap.innerHTML = `<h3>${title}</h3>`;
@@ -150,6 +150,21 @@
       onEachFeature: (f, l) => l.bindPopup(infoPopup(f.properties)),
     });
     addToggle(title, m.name, '', m.color, layer, true, false);
+  }
+
+  // ---------- spots where a bus line may cut across buildings
+  const flags = built.flags ? await getJSON('data/flags.geojson') : null;
+  if (flags && flags.features && flags.features.length) {
+    const FLAG = '#e8590c';
+    const layer = L.geoJSON(flags, {
+      pointToLayer: (f, ll) => L.marker(ll, {
+        icon: L.divIcon({ className: 'flag-icon', html: '!', iconSize: [24, 24], iconAnchor: [12, 12] }),
+        title: 'This line may be wrong here',
+      }),
+      onEachFeature: (f, l) => l.bindPopup(infoPopup(f.properties)),
+    });
+    const n = flags.features.length;
+    addToggle('Map accuracy', 'Spots where a line may be wrong', `${n} spot${n === 1 ? '' : 's'}, marked with !`, FLAG, layer, true, false);
   }
 
   syncStops();

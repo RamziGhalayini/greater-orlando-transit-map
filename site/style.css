@@ -52,6 +52,11 @@ main { flex: 1; display: flex; min-height: 0; }
 .swatch.zone { height: 18px; border-radius: 3px; opacity: .7; }
 .layer small { display: block; color: var(--muted); font-size: .85rem; }
 .soon { color: var(--muted); font-size: .9rem; margin: 2px 0 2px 36px; }
+/* "!" marker for spots where a bus line may cut across buildings */
+.flag-icon {
+  background: #e8590c; color: #fff; border: 2px solid #fff; border-radius: 50%;
+  box-shadow: 0 0 0 1px #1a1a1a; font: 700 15px/20px system-ui, sans-serif; text-align: center;
+}
 button { font: inherit; }
 button.big, #toggle-panel {
   min-height: 44px;
