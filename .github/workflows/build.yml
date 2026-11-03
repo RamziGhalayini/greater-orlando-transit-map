@@ -19,20 +19,44 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    env:
+      OSRM_VERSION: "26.4.1"
+      TOOLS: osrm-tools
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Install street-matching tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libtbb12 osmium-tool
+          npm install --silent --prefix "$TOOLS" "@project-osrm/osrm@$OSRM_VERSION"
+      - id: month
+        run: echo "month=$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
+      - name: Reuse this month's street network
+        id: streets
+        uses: actions/cache@v4
+        with:
+          path: osrm
+          key: osrm-${{ steps.month.outputs.month }}-${{ hashFiles('scripts/make_bus_profile.py', 'scripts/prepare_osrm.sh', 'sources.json') }}
+      - name: Build the street network (about once a month)
+        if: steps.streets.outputs.cache-hit != 'true'
+        run: bash scripts/prepare_osrm.sh
+      - name: Start the street matcher
+        run: bash scripts/start_osrm.sh
       - name: Download feeds and build GeoJSON
+        env:
+          OSRM_URL: http://127.0.0.1:5000
         run: python scripts/build.py
       - name: Save updated data to the repo
         run: |
           git config user.name "map-data-bot"
           git config user.email "map-data-bot@users.noreply.github.com"
-          git add site/data
+          git add site/data cache
           git diff --cached --quiet || git commit -m "Update map data $(date -u +%F)"
+          git pull --rebase origin main
           git push
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
