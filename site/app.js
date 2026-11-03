@@ -136,7 +136,7 @@
       pointToLayer: (f, ll) => L.circleMarker(ll, { renderer, radius: 9, color: '#fff', weight: 3, fillColor: m.color, fillOpacity: 1 }),
       onEachFeature: (f, l) => l.bindPopup(infoPopup(f.properties)),
     });
-    addToggle(title, m.name, '', m.color, layer, m.id !== 'robotaxi', m.id === 'robotaxi');
+    addToggle(title, m.name, '', m.color, layer, true, m.id === 'robotaxi');
   }
 
   syncStops();
